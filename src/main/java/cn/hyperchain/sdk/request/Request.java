@@ -34,7 +34,6 @@ public abstract class Request<K extends Response> {
         this.providerManager = providerManager;
     }
 
-    private Gson gson;
     protected HashMap<String, String> headers;
     private static final Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     // rpc request

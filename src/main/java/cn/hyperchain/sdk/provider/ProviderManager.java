@@ -257,17 +257,12 @@ public class ProviderManager {
         tCertRequest.addParams(param);
         String body = tCertRequest.requestBody();
         byte[] bodyBytes = body.getBytes(Utils.DEFAULT_CHARSET);
-        Map<String, String> headers = new HashMap<>();
         if (this.getToken() != null) {
-            headers.put("token",this.getToken());
+            tCertRequest.addHeader("token",this.getToken());
         }
         if (this.getTcertHash() != null) {
-            headers.put("hash",this.getTcertHash());
+            tCertRequest.addHeader("hash",this.getTcertHash());
         }
-        headers.put("tcert", sdkCertKeyPair.getPublicKey());
-        headers.put("signature", sdkCertKeyPair.signData(bodyBytes));
-        headers.put("msg", ByteUtil.toHex(bodyBytes));
-        String response = provider.post(body, headers);
         tCertRequest.addHeader("tcert", sdkCertKeyPair.getPublicKey());
         tCertRequest.addHeader("signature", sdkCertKeyPair.signData(bodyBytes));
         tCertRequest.addHeader("msg", ByteUtil.toHex(bodyBytes));
@@ -355,6 +350,8 @@ public class ProviderManager {
 
     public void setTcertHash(String tcertHash) {
         this.tcertHash = tcertHash;
+    }
+
     /**
      * set the global TxVersion.
      *
