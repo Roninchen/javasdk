@@ -1,13 +1,5 @@
 package cn.hyperchain.sdk.response;
 
-import cn.hyperchain.sdk.exception.RequestException;
-import cn.hyperchain.sdk.provider.ProviderManager;
-import cn.hyperchain.sdk.request.PollingRequest;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.annotations.Expose;
-
 /**
  * TxHashResponse get transaction hash.
  *
@@ -68,6 +60,8 @@ public class TxHashResponse extends Response {
 
         return result.getAsJsonObject().get("txHash").getAsString();
     }
+public class TxHashResponse extends PollingResponse {
+    public TxHashResponse() { }
 
     @Override
     public String toString() {

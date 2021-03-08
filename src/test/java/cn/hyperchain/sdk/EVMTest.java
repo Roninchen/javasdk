@@ -13,6 +13,7 @@ import cn.hyperchain.sdk.service.AccountService;
 import cn.hyperchain.sdk.service.ContractService;
 import cn.hyperchain.sdk.service.ServiceManager;
 import cn.hyperchain.sdk.transaction.Transaction;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.InputStream;
@@ -50,7 +51,7 @@ public class EVMTest {
         String contractAddress = receiptResponse.getContractAddress();
         System.out.println("contract address: " + contractAddress);
         System.out.println("账户私钥:" + account.getPrivateKey());
-
+        Assert.assertEquals(transaction.getTransactionHash(), receiptResponse.getTxHash());
 
         FuncParams params1 = new FuncParams();
         params1.addParams("1");
@@ -58,6 +59,7 @@ public class EVMTest {
         transaction1.sign(account);
         ReceiptResponse receiptResponse1 = contractService.invoke(transaction1).send().polling();
         System.out.println(receiptResponse1.getRet());
+        Assert.assertEquals(transaction1.getTransactionHash(), receiptResponse1.getTxHash());
         List decodeList = abi.getFunction("TestBytes32(bytes32)").decodeResult(ByteUtil.fromHex(receiptResponse1.getRet()));
         String[] topics = receiptResponse1.getLog()[0].getTopics();
         byte[][] topicsData = new byte[topics.length][];
@@ -95,6 +97,45 @@ public class EVMTest {
         transaction4.sign(account);
         ReceiptResponse receiptResponse4 = contractService.maintain(transaction4).send().polling();
         System.out.println(receiptResponse4.getRet());
+
+    }
+
+    @Test
+    public void testEVMDestroy() throws Exception {
+        // 1. build provider manager
+        DefaultHttpProvider defaultHttpProvider = new DefaultHttpProvider.Builder().setUrl(DEFAULT_URL).build();
+        ProviderManager providerManager = ProviderManager.createManager(defaultHttpProvider);
+
+        // 2. build service
+        ContractService contractService = ServiceManager.getContractService(providerManager);
+        AccountService accountService = ServiceManager.getAccountService(providerManager);
+
+        // 3. build transaction
+        Account account = accountService.genAccount(Algo.SMAES, PASSWORD);
+
+        InputStream inputStream1 = Thread.currentThread().getContextClassLoader().getResourceAsStream("solidity/sol2/TestContract_sol_TypeTestContract.bin");
+        InputStream inputStream2 = Thread.currentThread().getContextClassLoader().getResourceAsStream("solidity/sol2/TestContract_sol_TypeTestContract.abi");
+        String bin = FileUtil.readFile(inputStream1);
+        String abiStr = FileUtil.readFile(inputStream2);
+        Abi abi = Abi.fromJson(abiStr);
+
+        FuncParams params = new FuncParams();
+        params.addParams("contract01");
+        Transaction transaction = new Transaction.EVMBuilder(account.getAddress()).deploy(bin, abi, params).build();
+        transaction.sign(account);
+        ReceiptResponse receiptResponse = contractService.deploy(transaction).send().polling();
+        String contractAddress = receiptResponse.getContractAddress();
+        System.out.println("contract address: " + contractAddress);
+        System.out.println("账户私钥:" + account.getPrivateKey());
+//        Assert.assertEquals(transaction.getTransactionHash(), receiptResponse.getTxHash());
+
+        // maintain contract test
+
+        // test destroy
+        Transaction transaction2 = new Transaction.EVMBuilder(account.getAddress()).destroy(contractAddress).build();
+        transaction2.sign(account);
+        ReceiptResponse receiptResponse2 = contractService.maintain(transaction2).send().polling();
+        System.out.println(receiptResponse2.getRet());
 
     }
 }

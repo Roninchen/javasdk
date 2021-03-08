@@ -7,10 +7,15 @@ import cn.hyperchain.sdk.crypto.cert.CertKeyPair;
 import cn.hyperchain.sdk.exception.AllNodesBadException;
 import cn.hyperchain.sdk.exception.RequestException;
 import cn.hyperchain.sdk.exception.RequestExceptionCode;
+import cn.hyperchain.sdk.request.FileTransferRequest;
 import cn.hyperchain.sdk.request.NodeRequest;
 import cn.hyperchain.sdk.request.Request;
 import cn.hyperchain.sdk.request.TCertRequest;
 import cn.hyperchain.sdk.response.TCertResponse;
+import cn.hyperchain.sdk.response.tx.TxVersionResponse;
+import cn.hyperchain.sdk.service.ServiceManager;
+import cn.hyperchain.sdk.service.TxService;
+import cn.hyperchain.sdk.transaction.TxVersion;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.apache.log4j.Logger;
@@ -29,6 +34,7 @@ public class ProviderManager {
     private String namespace = "global";
     private TCertPool tCertPool;
     private List<HttpProvider> httpProviders;
+    private List<HttpProvider> fileMgrHttpProviders;
     private boolean isCFCA;
     private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private String token;
@@ -59,6 +65,20 @@ public class ProviderManager {
             }
             providerManager.httpProviders = new ArrayList<>(httpProviders.length);
             providerManager.httpProviders.addAll(Arrays.asList(httpProviders));
+            return this;
+        }
+
+        /**
+         * set provider manager fileMgr http providers.
+         * @param fileMgrHttpProviders fileMgr http providers
+         * @return {@link Builder}
+         */
+        public Builder fileMgrHttpProviders(FileMgrHttpProvider... fileMgrHttpProviders) {
+            if (fileMgrHttpProviders == null || fileMgrHttpProviders.length == 0) {
+                throw new IllegalStateException("can't initialize a ProviderManager instance with empty FileMgrHttpProviders");
+            }
+            providerManager.fileMgrHttpProviders = new ArrayList<>(fileMgrHttpProviders.length);
+            providerManager.fileMgrHttpProviders.addAll(Arrays.asList(fileMgrHttpProviders));
             return this;
         }
 
@@ -119,6 +139,7 @@ public class ProviderManager {
          * @return {@link ProviderManager}
          */
         public ProviderManager build() {
+            setTxVersion(providerManager);
             return providerManager;
         }
     }
@@ -135,10 +156,11 @@ public class ProviderManager {
         ProviderManager providerManager = new ProviderManager();
         providerManager.httpProviders = new ArrayList<>();
         providerManager.httpProviders.addAll(Arrays.asList(httpProviders));
+        setTxVersion(providerManager);
         return providerManager;
     }
 
-    private List<HttpProvider> checkIds(int... ids) throws RequestException {
+    private List<HttpProvider> checkIds(List<HttpProvider> httpProviders, int... ids) throws RequestException {
         // use all with null
         if (ids == null || ids.length == 0) {
             return httpProviders;
@@ -163,7 +185,12 @@ public class ProviderManager {
      * @throws RequestException -
      */
     public String send(Request request, int... ids) throws RequestException {
-        List<HttpProvider> hProviders = checkIds(ids);
+        List<HttpProvider> hProviders;
+        if (request instanceof FileTransferRequest) {
+            hProviders = checkIds(fileMgrHttpProviders ,ids);
+        } else {
+            hProviders = checkIds(httpProviders ,ids);
+        }
         int providerSize = hProviders.size();
         int startIndex = Utils.randInt(1, providerSize);
         for (int i = 0; i < providerSize; i ++) {
@@ -189,6 +216,7 @@ public class ProviderManager {
     }
 
     private String sendTo(Request request, HttpProvider provider) throws RequestException {
+        requestCheck(request, provider);
         String body = request.requestBody();
         byte[] bodyBytes = body.getBytes(Utils.DEFAULT_CHARSET);
         Map<String, String> headers = new HashMap<>();
@@ -196,23 +224,29 @@ public class ProviderManager {
             headers.put("token",this.getToken());
         }
         if (this.tCertPool != null) {
-            if (this.isCFCA) {
-                headers.put("tcert", this.tCertPool.getSdkCert());
-                headers.put("signature", this.tCertPool.getSdkCertKeyPair().signData(bodyBytes));
+            boolean f = this.isCFCA;
+            // todo may different txs have different version
+            if (TxVersion.GLOBAL_TX_VERSION.isGreaterOrEqual(TxVersion.TxVersion20)) {
+                // is flato
+                f = true;
+            }
+            if (f) {
+                request.addHeader("tcert", this.tCertPool.getSdkCert());
+                request.addHeader("signature", this.tCertPool.getSdkCertKeyPair().signData(bodyBytes));
             } else {
                 String tCert = this.tCertPool.getTCert(provider.getUrl());
                 if (tCert == null) {
                     tCert = this.getTCert(this.tCertPool.getUniquePubKey(), this.tCertPool.getSdkCertKeyPair(), provider);
                     this.tCertPool.setTCert(provider.getUrl(), tCert);
                 }
-                headers.put("tcert", tCert);
-                headers.put("signature", this.tCertPool.getUniqueKeyPair().signData(bodyBytes));
+                request.addHeader("tcert", tCert);
+                request.addHeader("signature", this.tCertPool.getUniqueKeyPair().signData(bodyBytes));
             }
             headers.put("hash",this.getHash());
             headers.put("msg", ByteUtil.toHex(bodyBytes));
+            request.addHeader("msg", ByteUtil.toHex(bodyBytes));
         }
-
-        return provider.post(body, headers);
+        return provider.post(request);
     }
 
     private String getTCert(String uniquePubKey, CertKeyPair sdkCertKeyPair, HttpProvider provider) throws RequestException {
@@ -234,8 +268,20 @@ public class ProviderManager {
         headers.put("signature", sdkCertKeyPair.signData(bodyBytes));
         headers.put("msg", ByteUtil.toHex(bodyBytes));
         String response = provider.post(body, headers);
+        tCertRequest.addHeader("tcert", sdkCertKeyPair.getPublicKey());
+        tCertRequest.addHeader("signature", sdkCertKeyPair.signData(bodyBytes));
+        tCertRequest.addHeader("msg", ByteUtil.toHex(bodyBytes));
+        String response = provider.post(tCertRequest);
         TCertResponse tCertResponse = gson.fromJson(response, TCertResponse.class);
         return tCertResponse.getTCert();
+    }
+
+    private void requestCheck(Request request, HttpProvider provider) throws RequestException {
+        boolean isFileMgrRequest = request instanceof FileTransferRequest;
+        boolean isFileMgrHttpProvider = provider instanceof FileMgrHttpProvider;
+        if (isFileMgrHttpProvider != isFileMgrRequest) {
+            throw new RequestException(RequestExceptionCode.REQUEST_TYPE_ERROR);
+        }
     }
 
     private void reconnect(final HttpProvider provider) {
@@ -309,5 +355,33 @@ public class ProviderManager {
 
     public void setTcertHash(String tcertHash) {
         this.tcertHash = tcertHash;
+    /**
+     * set the global TxVersion.
+     *
+     * @param providerManager specific providerManger
+     */
+    public static void setTxVersion(ProviderManager providerManager) {
+        int nodeNum = providerManager.httpProviders.size();
+        TxService txService = ServiceManager.getTxService(providerManager);
+        try {
+            String txVersionResult = "";
+            int count = 0;
+            for (int i = 1; i <= nodeNum; i++) {
+                TxVersionResponse txVersionResponse = txService.getTxVersion(i).send();
+                String txVersion = txVersionResponse.getTxVersionResult();
+                if (txVersionResult.equals(txVersion)) {
+                    count++;
+                } else {
+                    txVersionResult = txVersion;
+                }
+            }
+            if (count == nodeNum - 1) {
+                TxVersion.setGlobalTxVersion(txVersionResult);
+            } else {
+                logger.warn("the TxVersion of nodes is different, the platform's TxVersion is " + TxVersion.GLOBAL_TX_VERSION);
+            }
+        } catch (RequestException e) {
+            logger.error(e.toString());
+        }
     }
 }

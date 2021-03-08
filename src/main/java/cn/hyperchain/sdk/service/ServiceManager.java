@@ -6,10 +6,12 @@ import cn.hyperchain.sdk.service.impl.ArchiveServiceImpl;
 import cn.hyperchain.sdk.service.impl.BlockServiceImpl;
 import cn.hyperchain.sdk.service.impl.CompileServiceImpl;
 import cn.hyperchain.sdk.service.impl.ContractServiceImpl;
+import cn.hyperchain.sdk.service.impl.FileMgrServiceImpl;
 import cn.hyperchain.sdk.service.impl.MQServiceImpl;
 import cn.hyperchain.sdk.service.impl.NodeServiceImpl;
 import cn.hyperchain.sdk.service.impl.RadarServiceImpl;
 import cn.hyperchain.sdk.service.impl.TxServiceImpl;
+import cn.hyperchain.sdk.service.impl.ConfigServiceImpl;
 
 /**
  * service implements manager.
@@ -24,7 +26,7 @@ public class ServiceManager {
     }
 
     public static AccountService getAccountService(ProviderManager providerManager) {
-        return new AccountServiceImpl();
+        return new AccountServiceImpl(providerManager);
     }
 
     public static NodeService getNodeService(ProviderManager providerManager) {
@@ -53,5 +55,13 @@ public class ServiceManager {
 
     public static CompileService getCompileService(ProviderManager providerManager) {
         return new CompileServiceImpl(providerManager);
+    }
+
+    public static FileMgrService getFileMgrService(ProviderManager providerManager) {
+        return new FileMgrServiceImpl(providerManager);
+    }
+
+    public static ConfigService getConfigService(ProviderManager providerManager) {
+        return new ConfigServiceImpl(providerManager);
     }
 }

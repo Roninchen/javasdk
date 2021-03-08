@@ -24,11 +24,13 @@
         * [解冻合约](#解冻合约)
            * [HVM](#hvm-4)
            * [EVM](#evm-4)
+     * [交易体的payload](#交易体的payload)
+     * [交易体设置TxVersion](#交易体设置TxVersion)
      * [交易体签名](#交易体签名)
      * [创建请求](#创建请求)
      * [发送交易体](#发送交易体)
   * [第四章. Transaction接口(TxService)](#第四章-transaction接口txservice)
-     * [4.1 查询指定区块区间的交易(getTransactions)](#41-查询指定区块区间的交易gettransactions)
+     * [4.1 查询指定区块区间的交易(getTxss)](#41-查询指定区块区间的交易gettxs)
      * [4.2 查询所有非法交易(getDiscardTransactions)](#42-查询所有非法交易getdiscardtransactions)
      * [4.3 查询交易by transaction hash(getTransactionByHash)](#43-查询交易by-transaction-hashgettransactionbyhash)
      * [4.4 查询交易by block hash(getTxByBlockHashAndIndex)](#44-查询交易by-block-hashgettxbyblockhashandindex)
@@ -47,6 +49,9 @@
      * [4.17 查询批量交易by hash list(getBatchTxByHash)](#417-查询批量交易by-hash-listgetbatchtxbyhash)
      * [4.18 查询批量回执by hash list(getBatchReceip)](#418-查询批量回执by-hash-listgetbatchreceip)
      * [4.19 查询指定时间区间内的交易数量(getTxsCountByTime)](#419-查询指定时间区间内的交易数量gettxscountbytime)
+     * [4.20 查询指定extraID的交易by extraID(getTxsByExtraID)](#420-查询指定extraID的交易by-extraIDgetTxsByExtraID)
+     * [4.21 查询指定filter的交易by filter(getTxsByFilter)](#421-查询指定filter的交易by-filtergetTxsByFilter)
+     * [4.22 查询平台当前的交易版本号(getTxVersion)](#422-查询平台当前的交易版本号getTxVersion)
   * [第五章. BlockService相关接口](#第五章-blockservice相关接口)
      * [5.1 获取最新区块(getLastestBlock)](#51-获取最新区块getlastestblock)
      * [5.2 查询指定区间的区块by block number(getBlocks)](#52-查询指定区间的区块by-block-numbergetblocks)
@@ -82,9 +87,24 @@
      * [9.10 恢复所有归档数据](#910-恢复所有归档数据)
      * [9.11 查询归档数据状态](#911-查询归档数据状态)
      * [9.12 查询所有待完成的快照请求](#912-查询所有待完成的快照请求)
+  * [第十章. 接口响应类型结构体介绍](#第十章-接口响应类型结构体介绍)
+     * [10.1 TxService接口对应的响应类型](#101-TxService接口对应的响应类型)
+     * [10.2 BlockService接口对应的响应类型](#102-BlockService接口对应的响应类型)
+     * [10.3 ArchiveService接口对应的响应类型](#103-ArchiveService接口对应的响应类型)
+
 ## 第一章. 前言 
 
 **LiteSDK**是一个**轻量JavaSDK工具**，提供与Hyperchain区块链平台交互的接口以及一些处理工具。该文档⾯向Hyperchain区块链平台的应⽤开发者，提供hyperchain Java SDK的 使⽤指南。
+
+如需尝试SDK的demo，可将项目clone到本地，配置好Java环境(推荐使用1.8)和maven构建工具，可运行对应的发送交易和查询接口，例如合约调用的demo可在[此处](https://github.com/hyperchain/javasdk/tree/master/src/test/java/cn/hyperchain/sdk)找到，对应的资源文件和合约demo也在resource文件夹下。
+
+同时如需更好的使用SDK来操作区块链平台发送交易，建议阅读Hyperchain区块链底层平台[介绍文档](http://docs.hyperchain.cn/)，如需详细文档介绍可联系运维人员。
+
+同时对于EVM、HVM合约调用，也需详细阅读对应的合约介绍了解相关概念后再使用SDK进行操作。
+
+EVM Solidity合约文档链接：https://solidity.readthedocs.io/en/latest/
+
+HVM 合约文档链接见Hyperchain介绍文档。
 
 ## 第二章. 初始化
 
@@ -95,20 +115,53 @@
 ```java
 public static final String node1 = "localhost:8081";
 
+// 方式1
 HttpProvider httpProvider = new DefaultHttpProvider.Builder()
+                .setUrl(node1)
+                .https(tlsca, tls_peer_cert, tls_peer_priv)
+                .build();
+
+// 方式2，自定义超时时间
+HttpProvider httpProvider = new DefaultHttpProvider.Builder(10, 10, 10)
                 .setUrl(node1)
                 .https(tlsca, tls_peer_cert, tls_peer_priv)
                 .build();
 ```
 
 
+* `Builder(int readTimeout, int writeTimeout, int connectTimeout)`自定义**https协议**的读取超时时间、写超时时间和连接超时时间，单位为s。
 * `setUrl()`可以设置连接的节点**URL**（格式为**ip+jsonRPC端口**）;
 * `https()`设置启动**https协议**连接并设置使用的证书(需要传的参数类型为输入流)。
 
 
 ### 2.2 创建ProviderManager对象
 
-每个节点的连接都需要一个`HttpProvider`，而`ProvideManager`负责集成、管理这些`HttpProvider`，创建`ProvideManager`有两种方式，一种是通过`createManager()`创建，另一种是和`HttpProvider`一样通过**Builder**模式创建。使用前者创建会使用`ProvideManager`的默认配置参数，而如果想定制更多的属性则需要通过后者的方式创建，示例如下：
+每个节点的连接都需要一个`HttpProvider`，而`ProviderManager`负责集成、管理这些`HttpProvider`，创建`ProviderManager`有两种方式，一种是通过`createManager()`创建，另一种是和`HttpProvider`一样通过**Builder**模式创建。使用前者创建会使用`ProvideManager`的默认配置参数，而如果想定制更多的属性则需要通过后者的方式创建，示例如下：
+
+另外，每个节点都有一个对应的TxVersion，可通过`getTxVersion(nodeId)`接口获取对应节点的TxVersion，发送到节点的transaction的TxVersion必须与节点一致才能通过验签。`providerManager`对象在创建时会通过`TxVersion.setGlobalTxVersion`设置全局的TxVersion。`Transaction`对象也可通过`setTxVersion`函数设置单次交易的TxVersion。
+
+为全局设置txVersion(不推荐修改)：
+
+```java
+static {
+    TxVersion.setGlobalTxVersion(TxVersion.TxVersion10);
+}
+```
+
+或者为单个交易设置txVersion：
+
+```java
+Transaction transaction = new Transaction.HVMBuilder(account.getAddress()).deploy(payload).txVersion(TxVersion.TxVersion10).build();
+```
+
+一般而言，使用新版本LiteSDK访问hyperchain默认txVersion为1.0，对于hyperchain2.0来说，sdk将自动识别平台txVersion，**不需要手动进行设置**。
+
+节点平台与TxVersion对应关系如下：
+
+|  平台使用版本   | TxVersion版本  |
+|  ----  | ----  |
+| hyperchain 1.x | 1.0 |
+| hyperchain 2.0.0 | 2.3 |
 
 ```java
 // 方式1
@@ -194,7 +247,7 @@ public ReceiptResponse polling() throws RequestException;
 public String getTxHash();
 ```
 
-LiteSDK的合约接口较特殊，目前提供了**部署合约、调用合约、管理合约**三种接口。
+LiteSDK的合约接口较特殊，目前提供了**部署合约、调用合约、管理合约、通过投票管理合约**四种接口。
 
 ```java
 public interface ContractService {
@@ -203,10 +256,12 @@ public interface ContractService {
     Request<TxHashResponse> invoke(Transaction transaction, int... nodeIds);
 
     Request<TxHashResponse> maintain(Transaction transaction, int... nodeIds);
+  
+    Request<TxHashResponse> manageContractByVote(Transaction transaction, int... nodeIds);
 }
 ```
 
-根据要创建的合约服务不同，封装的`Transaction`交易体也会不同。**并且LiteSDK支持HVM、EVM两种形式的合约**，这两种也会影响到交易体的创建。
+根据要创建的合约服务不同，封装的`Transaction`交易体也会不同。**并且LiteSDK支持HVM、EVM、BVM三种形式的合约**，这几种也会影响到交易体的创建。
 
 ### 转账交易
 
@@ -255,8 +310,20 @@ public interface AccountService {
     Account fromAccountJson(String accountJson);
 
     Account fromAccountJson(String accountJson, String password);
+    
+    Request<BalanceResponse> getBalance(String address, int... nodeIds);
+  
+    Request<RolesResponse> getRoles(String address, int... nodeIds);
+
+    Request<AccountsByRoleResponse> getAccountsByRole(String role, int... nodeIds);
 }
 ```
+
+前四个接口是用于生成账户。余下接口是查询账户相关信息，其说明如下：
+
+-  `getBalance `方法则可以查询该账户所有的余额，需要传一个**合约地址**为参数。
+-  `getRoles`方法则可以查询该账户所有的角色，需要传一个**合约地址**为参数。
+-  `getAccountsByRole `方法则可以查询具有改角色的账户列表，需要传一个**角色名称**为参数。
 
 目前Account服务支持的所有加密算法如下：
 
@@ -277,7 +344,7 @@ public enum Algo {
 
 #### 交易体创建
 
-**LiteSDK**使用**Builder**模式来负责对`Transaction`的创建，通过调用`build()`函数来获取到`Transaction`实例。HVM和EVM分别有各自的**Builder**：`HVMBuilder`、`EVMBuilder`，继承同一个父类`Builer`。目前**Builder**模式提供了五种交易体的封装，分别对应**部署合约、调用合约、升级合约、冻结合约、解冻合约**，其中前两个服务的交易体分别定义在HVM、EVM各自的`Builder`子类中，后三者都是**管理合约**这一服务的子服务，定义在父类`Builder`中。
+**LiteSDK**使用**Builder**模式来负责对`Transaction`的创建，通过调用`build()`函数来获取到`Transaction`实例。HVM、EVM和BVM分别有各自的**Builder**：`HVMBuilder`、`EVMBuilder、BVMBuilder`，继承同一个父类`Builer`。目前**Builder**模式提供了五种交易体的封装，分别对应**部署合约、调用合约、升级合约、冻结合约、解冻合约**，其中前两个服务的交易体分别定义在HVM、EVM、BVM各自的`Builder`子类中，后三者都是**管理合约**这一服务的子服务，定义在父类`Builder`中。
 
 ```java
 class Builder {
@@ -298,6 +365,10 @@ class EVMBuilder extends Builder {
     // 当合约需要提供abi解析构造方法参数时使用
     Builder deploy(String bin, Abi abi, FuncParams params);
     Builder invoke(String contractAddress, String methodName, Abi abi, FuncParams params);
+}
+
+class BVMBuilder extends Builder {
+    Builder invoke(BuiltinOperation opt)
 }
 ```
 
@@ -327,7 +398,7 @@ FuncParams params = new FuncParams();
 params.addParams("contract01");
 Transaction transaction = new Transaction.EVMBuilder(account.getAddress()).deploy(bin, abi, params).build();
 // 如果要部署的合约无构造函数，则调用如下
-// Transaction transaction = new Transaction.HVMBuilder(account.getAddress()).deploy(bin).build();
+// Transaction transaction = new Transaction.EVMBuilder(account.getAddress()).deploy(bin).build();
 ```
 
 创建交易体时需要指定要**部署的合约的bin、abi文件的字符串内容以及合约名**。
@@ -338,16 +409,16 @@ Transaction transaction = new Transaction.EVMBuilder(account.getAddress()).deplo
 
 hvm调用合约有两种方式：
 
-- **invoke bean**调用
+- **InvokeBean**调用
 - 直接调用合约方法（类似evm）
 
-1. invoke bean调用如下：
+1. InvokeBean调用如下：
 
 ```java
 Transaction transaction = new Transaction.HVMBuilder(account.getAddress()).invoke(receiptResponse.getContractAddress(), invoke).build();
 ```
 
-创建交易体时需要指定**合约地址**和**invoke bean**（HVM中新提出的概念，可点击[该链接](http://hvm.internal.hyperchain.cn/#/)了解）。
+创建交易体时需要指定**合约地址**和**InvokeBean**(HVM中新提出的概念，请先通过HVM文档了解)。
 
 2. 直接调用合约方法如下：
 
@@ -421,6 +492,34 @@ Transaction transaction = new Transaction.EVMBuilder(account.getAddress()).unfre
 
 创建交易体时需要指定**合约地址**。
 
+### 交易体的payload
+
+在创建交易体时，会根据传入的参数生成payload。如果是HVM合约相关的`transaction`，可通过`Decoder`提供的`decodeHVMPayload(String payload)`方法对payload进行解析，返回`HVMPayload`对象。
+
+```java
+HVMPayload decodeHVMPayload(String payload)
+```
+
+`HVMPayload`结构如下：
+
+```java
+public class HVMPayload {
+    private String invokeBeanName;
+    private String invokeArgs;
+    private Set<String> invokeMethods;
+}
+```
+
+其中`invokeBeanName`为调用的HVM合约的名字，`nvokeArgs`为调用的参数，`invokeMethods`为调用的合约方法
+
+### 交易体设置TxVersion
+
+`transaction`对象在创建时，其TxVersion属性值默认为全局的TxVersion，也可通过`setTxVersion`函数来设置交易体的TxVersion属性。
+
+```java
+Transaction transaction = new Transaction.HVMBuilder(account.getAddress()).deploy(payload).txVersion(TxVersion.TxVersion10).build();
+```
+
 ### 交易体签名
 
 通过`Transaction`提供的`sign()`方法，需要指定`Account`对象。
@@ -452,80 +551,19 @@ ReceiptResponse receiptResponse = contractRequest.send().polling();
 
 **注：该章的Transaction与第三章的交易体概念不同，该章的接口主要主要用于查询之前在链上的执行信息，将返回的信息封装为Transaction结构体。**
 
-TxService接口繁多，返回的执行结果根据情况封装共对应四种响应：
+TxService接口繁多，返回的执行结果根据情况封装共对应五种响应：
 
 - TxResponse
 - TxCountWithTSResponse
 - TxCountResponse
 - TxAvgTimeResponse
+- ReceiptListResponse
 
-分别对应的结构如下：
-
-**TxResponse**
-
-通过`result`接收返回结果，`result`实际结构是内部类`Transaction`，可通过`getResult()`方法得到。
-
-```java
-public class TxResponse extends Response {
-    public class Transaction {
-        private String version;
-        private String hash;
-        private String blockNumber;
-        private String blockHash;
-        private String txIndex;
-        private String from;
-        private String to;
-        private String amount;
-        private String timestamp;
-        private String nonce;
-        private String extra;
-        private String executeTime;
-        private String payload;
-        private String signature;
-        private String blockTimestamp;
-        private String blockWriteTime;
-    }
-    private JsonElement result;
-}
-```
-
-**TxCountWithTSResponse**
-
-通过`result`接收返回结果，`result`实际类型是内部类`TxCount`，可通过`getResult()`方法得到。
-
-```java
-public class TxCountWithTSResponse extends Response {
-    public class TxCount {
-        private String count;
-        private long timestamp;
-    }
-    private TxCount result;
-}
-```
-
-**TxCountResponse**
-
-通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
-
-```java
-public class TxCountResponse extends Response {
-    private String result;
-}
-```
-
-**TxAvgTimeResponse**
-
-通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
-
-```java
-public class TxAvgTimeResponse extends Response {
-    private String result;
-}
-```
+详细结构请参考第十章
 
 
 
-### 4.1 查询指定区块区间的交易(getTransactions)
+### 4.1 查询指定区块区间的交易(getTxs)
 
 参数：
 
@@ -542,7 +580,6 @@ Request<TxResponse> getTx(BigInteger from, BigInteger to, int... nodeIds);
 ```java
 Request<TxResponse> getTx(String from, String to, int... nodeIds);
 ```
-
 
 
 ### 4.2 查询所有非法交易(getDiscardTransactions)
@@ -728,23 +765,17 @@ Request<TxResponse> getSignHash(String from, String to, BigInteger nonce, String
 
 - startTime 起起始时间戳(单位ns)。
 - endTime 结束时间戳(单位ns)。
-- limit（可选） 符合条件的区块数目最大值，默认值为50。
 - nodeIds 说明请求向哪些节点发送。
 
 ```java
 Request<TxResponse> getTransactionsByTime(BigInteger startTime, BigInteger endTime, int... nodeIds);
-
-Request<TxResponse> getTransactionsByTime(BigInteger startTime, BigInteger endTime, int limit, int... nodeIds);
 ```
 
 重载方法如下：
 
 ```java
 Request<TxResponse> getTransactionsByTime(String startTime, String endTime, int... nodeIds);
-
-Request<TxResponse> getTransactionsByTime(String startTime, String endTime, int limit, int... nodeIds);
 ```
-
 
 
 ### 4.13 查询指定时间区间内的非法交易(getDiscardTransactionsByTime)
@@ -853,7 +884,7 @@ Request<TxResponse> getBatchTxByHash(ArrayList<String> txHashList, int... nodeId
 
 
 
-### 4.18 查询批量回执by hash list(getBatchReceip)
+### 4.18 查询批量回执by hash list(getBatchReceipt)
 
 参数：
 
@@ -861,7 +892,7 @@ Request<TxResponse> getBatchTxByHash(ArrayList<String> txHashList, int... nodeId
 - nodeIds 说明请求向哪些节点发送。
 
 ```java
-Request<ReceiptResponse> getBatchReceipt(ArrayList<String> txHashList, int... nodeIds);
+Request<ReceiptListResponse> getBatchReceipt(ArrayList<String> txHashList, int... nodeIds);
 ```
 
 
@@ -878,8 +909,108 @@ Request<ReceiptResponse> getBatchReceipt(ArrayList<String> txHashList, int... no
 Request<TxResponse> getTxsCountByTime(BigInteger startTime, BigInteger endTime, int... nodeIds);
 ```
 
+### 4.20 查询指定extraID的交易by extraID(getTxsByExtraID)
+
+该接口只要在访问的节点开启数据索引功能时才可用。
+
+参数：
+
+- mode [可选] 表示本次查询请求的查询模式，目前有0、1、2三个值可选，默认为0。0 表示按序精确查询模式，即筛选出的的交易 extraId 数组的数值和顺序都与查询条件完全一致。1 表示非按序精确查询模式，即筛选出的交易 extraId 数组包含查询条件里指定的全部数值，顺序无要求。2 表示非按序匹配查询模式，即筛选出的交易 extraId 数组包含部分或全部查询条件指定的值，且顺序无要求。。
+- detail [可选] 是否返回详细的交易内容，默认为false。
+- metaData [可选] 分页相关参数。指定本次查询的起始位置、查询方向以及返回的条数。若未指定，则默认从最新区块开始向前查询，默认返回条数上限是5000条。
+- filter [必选] 指定本次查询过滤条件。包括交易extraId和交易接收方地址。
+- nodeIds 说明请求向哪些节点发送。
+
+MetaDataParam 结构如下：
+
+- pagesize [可选] 表示本次查询返回多少 条交易。如果未指定，则pagesize默认 值为5000，如果超过5000，则使用节点默认值5000。如果符合条件的交易数量实际上超过pagesize，则返回结果里hasmore为true。
+- bookmark<Bookmark> [可选] 表示本次查询的书签位置，即起始位置，返回的结果里不包含用户指定的书签所对应的交易。如果未指定且backward为false，则默认从最新区块开始向前遍历，如果未指定且backward为true，则默认从创世区块开始向后遍历。
+- backward [可选] 表示本次查询的方向，false表示以起始位置为起点从高区块往低区块遍历，true表示以起 始位 置为起点从低区块往高区块遍历，默认查询方向为false。
+
+Bookmark 结构如下：
+
+- blkNum 交易所在区块号。
+- txIndex 交易索引号，即交易在区块内的位置。
+
+FilterParam 结构如下：
+
+- extraId  [必选] 指定交易extraId的值，类型为数组，数组元素可以为Long或者string。
+- txTo  [可选] 指定交易接收方的地址。
+
+客户端可以利用该接口实现区块链的“分页查询”，根据返回结果里的hasmore来判断是否要继续查询剩下的数据。下面对该接口的参数做进一步说明：
+
+如果查询条件未指定 metadata，则 metadata.backward 默认为 false、书签位置默认为最新区块最后一条交易，从书签位置开始往前遍历，limit默认为5000条。
+
+如果查询条件里未指定 metadata.bookmark，若 metadata.backward 为 false，则默认书签位置为最新区块的最后一条交易，若metadata.backward 为 true，则默认书签位置为第一个区块的第一条交易。
+
+如果查询条件里指定的书签位置 metadata.bookmark 位于区块区间 [1, latest] 里，则我们需要根据 metadata.backward 的值来调整遍历的区块区间。如果 metadata.backward 为false，则区块区间调整为 [1, metadata.bookmark.blkNum]，如果 metadata.backward 为true，则区块区间调整为 [metadata.bookmark.blkNum, latest]。
+
+当 backward 为 false 的时 候，如果指定的书签位置在区块1之前，则接口返回error。当 backward 为 true 的时候，如果指定的书签位置在最新区块之后，则接口返回error。
+
+```java
+Request<TxLimitResponse> getTxsByExtraID(int mode, boolean detail, MetaDataParam metaData, FilterParam filter, int... nodeIds);
+```
+
+### 4.21 查询指定filter的交易by filter(getTxsByFilter)
+
+该接口只要在访问的节点开启数据索引功能时才可用。
+
+参数：
+
+- mode [可选] 表示本次查询请求的查询模式，目前有 0、1 两个值可选，默认为0。0 表示多条件与查询模式，即交易对应字段的值与查询条件里所有指定的字段值都完全一致。1 表示多条件或询模式，即交易对应字段的值至少有一个等于查询条件里指定的字段值。
+- detail [可选] 是否返回详细的交易内容，默认为false。
+- metaData [可选] 指定本次查询的起始位置、查询方向以及返回的条数。若未指定，则默认从最新区块开始向前查询，默认返回条数上限是5000条。
+- filter [必选] 指定本次查询过滤条件。
+- nodeIds 说明请求向哪些节点发送。
+
+MetaDataParam 结构如下：
+
+- pagesize [可选] 表示本次查询返回多少 条交易。如果未指定，则pagesize默认 值为5000，如果超过5000，则使用节点默认值5000。如果符合条件的交易数量实际上超过pagesize，则返回结果里hasmore为true。
+- bookmark<Bookmark> [可选] 表示本次查询的书签位置，即起始位置，返回的结果里不包含用户指定的书签所对应的交易。如果未指定且backward为false，则默认从最新区块开始向前遍历，如果未指定且backward为true，则默认从创世区块开始向后遍历。
+- backward [可选] 表示本次查询的方向，false表示以起始位置为起点从高区块往低区块遍历，true表示以起 始位 置为起点从低区块往高区块遍历，默认查询方向为false。
+
+Bookmark 结构如下：
+
+- blkNum 交易所在区块号。
+- txIndex 交易索引号，即交易在区块内的位置。
+
+FilterParam 结构如下：
+
+- txHash [可选] 指定交易的哈希值。
+- blkNumber [可选] 指定交易所在的区块号。
+- txIndex [可选] 指定交易在区块内的索引位置。
+- txFrom [可选] 指定交易发送方的地址。
+- txTo [可选] 指定交易接收方的地址。
+- extraId [可选] 指定交易extraId的值，类型为数组，数组元素可以为long或者String。
+
+客户端可以利用该接口实现区块链的“分页查询”，根据返回结果里的 hasmore 来判断是否要继续查询剩下的数据。下面对该接口的参数做进一步说明：
+
+如果查询条件未指定 metadata，则 metadata.backward 默认为 false、书签位置默认为最新区块最后一条交易，从书签位置开始往前遍历，limit默认为5000条。
+
+如果查询条件里未指定 metadata.bookmark，若 metadata.backward 为 false，则默认书签位置为最新区块的最后一条交易，若 metadata.backward 为 true，则默认书签位置为第一个区块的第一条交易。
+
+如果查询条件里指定的书签位置 metadata.bookmark 位于区块区间 [1, latest] 里， 则我们需要根据 metadata.backward 的值来调整遍历的区块区间。如果 metadata.backward 为false，则区块区间调整为 [1, metadata.bookmark.blkNum]，如果 metadata.backward 为true，则区块区间调整为 [metadata.bookmark.blkNum, latest]。
+
+当 backward 为 false 的时候，如果指定的书签位置在区块1之前，则接口返回error。当 backward 为 true 的时候，如果指定的书签位置在最新区块之后，则接口返回error。
 
 
+```java
+Request<TxLimitResponse> getTxsByFilter(int mode, boolean detail, MetaDataParam metaData, FilterParam filter, int... nodeIds);
+```
+
+
+
+### 4.22 查询平台当前的交易版本号(getTxVersion)
+
+getTxVersion接口会在创建ProviderManager对象时调用，并设置全局的TxVersion。
+
+参数：
+
+- nodeId 说明请求哪个节点平台的交易版本号
+
+```java
+Request<TxVersionResponse> getTxVersion(int nodeId) throws RequestException;
+```
 
 
 ## 第五章. BlockService相关接口
@@ -891,63 +1022,8 @@ BlockService接口与TxService相似，只是获取的对象是区块信息。�
 - BlockAvgTimeResponse
 - BlockCountResponse
 
-分别对应的结构如下。
+详细结构请参考第十章。
 
-**BlockResponse**
-
-通过`result`接收返回结果，`result`实际类型是内部类`Block`，可通过`getResult()`方法得到。
-
-```java
-public class BlockResponse extends Response {
-    public class Block {
-        private String version;
-        private String number;
-        private String hash;
-        private String parentHash;
-        private String writeTime;
-        private String avgTime;
-        private String txcounts;
-        private String merkleRoot;
-    }
-    private JsonElement result;
-}
-```
-
-**BlockNumberResponse** 
-
-通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
-
-```java
-public class BlockNumberResponse extends Response {
-    private String result;
-}
-```
-
-**BlockAvgTimeResponse**
-
-通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
-
-```java
-public class BlockAvgTimeResponse extends Response {
-    @Expose
-    private String result;
-}
-```
-
-**BlockCountResponse**
-
-通过`result`接收返回结果，`result`实际类型是内部类`BlockCount`，可通过`getResult()`方法得到。
-
-```java
-public class BlockCountResponse extends Response {
-    public class BlockCount {
-        private String sumOfBlocks;
-        private String startBlock;
-        private String endBlock;
-    }
-    private BlockCount result;
-}
-```
 
 ### 5.1 获取最新区块(getLastestBlock)
 
@@ -1194,7 +1270,7 @@ public class MQResponse extends Response {
 
 参数：
 
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> informNormal(int... nodeIds)
@@ -1208,51 +1284,61 @@ Request<MQResponse> informNormal(int... nodeIds)
 + queueName 队列名称
 + routingkeys 想要订阅的消息类型
 + isVerbose 推送区块时是否推送交易列表，true表示是
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> registerQueue(String from, String queueName, List<String> routingkeys, Boolean isVerbose, int... nodeIds);
 ```
 
-### 7.3 注销队列
+### 7.3 注册队列(with mqParam)
+
+参数：
+
++ mqParam 注册队列所需参数，除了7.2中的参数外，新增了合约event事件的相关过滤参数
+
+```java
+Request<MQResponse> registerQueue(MQParam mqParam, int... nodeIds);
+```
+
+### 7.4 注销队列
 
 参数：
 
 + from 调用该接口的账户地址
 + queueName 队列名称
 + exchangerName exchanger 名称
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> unRegisterQueue(String from, String queueName, String exchangerName, int... nodeIds);
 ```
 
-### 7.4 获取所有队列名称
+### 7.5 获取所有队列名称
 
 参数
 
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> getAllQueueNames(int... nodeIds);
 ```
 
-### 7.5 获取所有exchanger名称
+### 7.6 获取所有exchanger名称
 
 参数：
 
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> getExchangerName(int... nodeIds);
 ```
 
-### 7.6 删除exchanger
+### 7.7 删除exchanger
 
 参数：
 
 + exchangerName exchanger名称
-+ nodeIds 说明请求向哪些节点发送
++ nodeIds 说明请求向某个节点发送，nodeIds有且只能有一个
 
 ```java
 Request<MQResponse> deleteExchanger(String exchangerName, int... nodeIds);
@@ -1286,46 +1372,9 @@ Request<RadarResponse> listenContract(String sourceCode, String contractAddress,
 - ArchiveFilterIdResponse
 - ArchiveBoolResponse
 
-分别对应的结构如下：
+详细结构请参考第十章。
 
-**ArchiveResponse**
 
-通过`result`接收返回结果，`result`实际结构是内部类`Archive`，可通过`getResult()`方法得到。
-
-```java
-public class ArchiveResponse extends Response {
-    public class Archive {
-        private String height;
-        private String hash;
-        private String filterId;
-        private String merkleRoot;
-        private String date;
-        private String namespace;
-    }
-
-    private JsonElement result;
-}
-```
-
-**ArchiveFilterIdResponse**
-
-通过`result`接收返回结果，`result`实际结构是`String`，可通过`getResult()`方法得到。
-
-```java
-public class ArchiveFilterIdResponse extends Response {
-    private String result;
-}
-```
-
-**ArchiveBoolResponse**
-
-通过`result`接收返回结果，`result`实际结构是`Boolean`，可通过`getResult()`方法得到。
-
-```java
-public class ArchiveBoolResponse extends Response {
-    private Boolean result;
-}
-```
 
 ### 9.1 制作快照
 
@@ -1466,6 +1515,218 @@ Request<ArchiveResponse> pending(int... nodeIds);
 
 
 
+## 第十章. 接口响应类型结构体介绍
+
+### 10.1 TxService接口对应的响应类型
+
+- TxResponse
+- TxCountWithTSResponse
+- TxCountResponse
+- TxAvgTimeResponse
+- ReceiptListResponse
+
+分别对应的结构如下：
+
+**TxResponse**
+
+通过`result`接收返回结果，`result`实际结构是内部类`Transaction`，可通过`getResult()`方法得到。
+
+```java
+public class TxResponse extends Response {
+    public class Transaction {
+        private String version;
+        private String hash;
+        private String blockNumber;
+        private String blockHash;
+        private String txIndex;
+        private String from;
+        private String to;
+        private String amount;
+        private String timestamp;
+        private String nonce;
+        private String extra;
+        private String executeTime;
+        private String payload;
+        private String signature;
+        private String blockTimestamp;
+        private String blockWriteTime;
+    }
+    private JsonElement result;
+}
+```
+
+**TxCountWithTSResponse**
+
+通过`result`接收返回结果，`result`实际类型是内部类`TxCount`，可通过`getResult()`方法得到。
+
+```java
+public class TxCountWithTSResponse extends Response {
+    public class TxCount {
+        private String count;
+        private long timestamp;
+    }
+    private TxCount result;
+}
+```
+
+**TxCountResponse**
+
+通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
+
+```java
+public class TxCountResponse extends Response {
+    private String result;
+}
+```
+
+**TxAvgTimeResponse**
+
+通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
+
+```java
+public class TxAvgTimeResponse extends Response {
+    private String result;
+}
+```
+
+**ReceiptListResponse**
+
+通过`result`接收返回结果，`result`实际类型是内部类`Receipt`，可通过`getResult()`方法得到。
+
+```java
+public class ReceiptListResponse extends Response {
+    private ArrayList<ReceiptResponse.Receipt> result;
+}
+```
+
+`Receipt`结构如下
+
+```java
+public class Receipt {
+        private String contractAddress;
+        private String ret;
+        private String txHash;
+        private EventLog[] log;
+        private String vmType;
+        private long gasUsed;
+        private String version;
+}
+```
+
+### 10.2 BlockService接口对应的响应类型
+
+- BlockResponse
+- BlockNumberResponse 
+- BlockAvgTimeResponse
+- BlockCountResponse
+
+分别对应的结构如下。
+
+**BlockResponse**
+
+通过`result`接收返回结果，`result`实际类型是内部类`Block`，可通过`getResult()`方法得到。
+
+```java
+public class BlockResponse extends Response {
+    public class Block {
+        private String version;
+        private String number;
+        private String hash;
+        private String parentHash;
+        private String writeTime;
+        private String avgTime;
+        private String txcounts;
+        private String merkleRoot;
+    }
+    private JsonElement result;
+}
+```
+
+**BlockNumberResponse** 
+
+通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
+
+```java
+public class BlockNumberResponse extends Response {
+    private String result;
+}
+```
+
+**BlockAvgTimeResponse**
+
+通过`result`接收返回结果，`result`实际类型是`String`，可通过`getResult()`方法得到。
+
+```java
+public class BlockAvgTimeResponse extends Response {
+    @Expose
+    private String result;
+}
+```
+
+**BlockCountResponse**
+
+通过`result`接收返回结果，`result`实际类型是内部类`BlockCount`，可通过`getResult()`方法得到。
+
+```java
+public class BlockCountResponse extends Response {
+    public class BlockCount {
+        private String sumOfBlocks;
+        private String startBlock;
+        private String endBlock;
+    }
+    private BlockCount result;
+}
+```
+
+### 10.3 ArchiveService接口对应的响应类型
+
+- ArchiveResponse
+- ArchiveFilterIdResponse
+- ArchiveBoolResponse
+
+分别对应的结构如下：
+
+**ArchiveResponse**
+
+通过`result`接收返回结果，`result`实际结构是内部类`Archive`，可通过`getResult()`方法得到。
+
+```java
+public class ArchiveResponse extends Response {
+    public class Archive {
+        private String height;
+        private String hash;
+        private String filterId;
+        private String merkleRoot;
+        private String date;
+        private String namespace;
+    }
+
+    private JsonElement result;
+}
+```
+
+**ArchiveFilterIdResponse**
+
+通过`result`接收返回结果，`result`实际结构是`String`，可通过`getResult()`方法得到。
+
+```java
+public class ArchiveFilterIdResponse extends Response {
+    private String result;
+}
+```
+
+**ArchiveBoolResponse**
+
+通过`result`接收返回结果，`result`实际结构是`Boolean`，可通过`getResult()`方法得到。
+
+```java
+public class ArchiveBoolResponse extends Response {
+    private Boolean result;
+}
+```
+
+
+
 ## 附录
 
 ### 附录 A Solidity与Java的编码解码
@@ -1474,15 +1735,15 @@ Request<ArchiveResponse> pending(int... nodeIds);
 
 当使用**LiteSDK**编译solidity合约时，由于java和solidity本身类型的不兼容，所以在调用solidity方法传参数的时候需要对java类型进行相应的编码解码，LiteSDK内部的`Abi`类，**与solidity的abi文件对应，用来提供solidity合约的函数入参、返回值等信息**，方便我们对solidity类型和java类型做转换，目前Litesdk支持的对应类型如下：
 
-| JAVA              | SOLIDITY                         |
-| ----------------- | -------------------------------- |
-| `boolean/Boolean` | `bool`                           |
+| JAVA              | SOLIDITY                       |
+| ----------------- | ------------------------------ |
+| `boolean/Boolean` | `bool`                         |
 | `BigInteger`      | `int、int8、int16……int256`       |
 | `BigInteger`      | `uint、uint8、uint16……uint256`   |
-| `String`          | `string`                         |
+| `String`          | `string`                       |
 | `byte[]/Byte[]`   | `bytes、bytes1、bytes2……bytes32` |
-| `string`          | `address`                        |
-| `Array`/`List`    | `array`                          |
+| `string`          | `address`                      |
+| `Array`/`List`    | `array`                        |
 
 #### 编码
 
@@ -1571,3 +1832,61 @@ InvokeDirectlyParams.params.build();
 
 
 
+### 附录C 平台错误码和对应原因
+
+| **code** | **含义**                               |
+| -------- | ------------------------------------ |
+| 0        | 请求成功                                 |
+| -32700   | 服务端接收到无效的json。该错误发送于服务器尝试解析json文本    |
+| -32600   | 无效的请求（比如非法的JSON格式）                   |
+| -32601   | 方法不存在或者无效                            |
+| -32602   | 无效的方法参数                              |
+| -32000   | Hyperchain内部错误或者空指针或者节点未安装solidity环境 |
+| -32001   | 查询的数据不存在                             |
+| -32002   | 余额不足                                 |
+| -32003   | 签名非法                                 |
+| -32004   | 合约部署出错                               |
+| -32005   | 合约调用出错                               |
+| -32006   | 系统繁忙(平台需要处理交易量达到限制)                  |
+| -32007   | 交易重复                                 |
+| -32008   | 合约操作权限不够                             |
+| -32009   | 账户不存在                                |
+| -32010   | namespace不存在                         |
+| -32011   | 账本上无区块产生，查询最新区块的时候可能抛出该错误            |
+| -32012   | 订阅不存在                                |
+| -32013   | 数据归档、快照相关错误                          |
+| -32021   | 过时接口                                 |
+| -32097   | Hypercli用户令牌无效                       |
+| -32098   | 请求未带cert或者错误cert导致认证失败               |
+| -32099   | 请求tcert失败                            |
+|          | 参数错误(指定节点发送时，指定index错误)              |
+| -9993    | 文件下载失败                               |
+| -9994    | FileMgrHttpProvider不支持的request类型请求   |
+| -9995    | 请求失败(通常是请求体过长)                       |
+| -9996    | 请求失败(通常是请求消息错误)                      |
+| -9997    | 异步请求失败                               |
+| -9998    | 请求超时(轮询结束未获得回执)                      |
+| -9999    | 获取平台响应失败                             |
+
+上述为平台api和sdk接口可能返回的状态码的说明，其中-999x的状态码为sdk对平台返回状态码或网络请求结果的封装，简化上层处理逻辑；其余状态码为平台api接口的原生返回结果。
+
+在通过LiteSDK调用查询接口时，例如查询交易Hash对应的交易回执或者通过区块号查询区块内容时，LiteSDK将不会对查询接口进行交易状态码的封装，返回原生状态码，查询结果即为平台返回结果；当发生网络断连问题导致查询接口无法获得Response时，将返回-999x状态码。
+
+当通过LiteSDK发送交易时，由于平台执行交易为异步执行，通过先返回交易Hash，在通过交易Hash查询回执的方式，所以LiteSDK将发送交易和查询交易回执进行了拆分，一个完整的发送交易并获得回执过程如下：
+
+```java
+Request<TxHashResponse> request = sendTxService.sendTx(transaction);
+TxHashResponse txHashResponse = request.send();
+ReceiptResponse response = txHashResponse.polling();
+```
+
+1. 通过调用`request.send()`将交易发送到链上，
+   1. 返回状态码为0并获取交易Hash表示交易已成功上链
+   2. 当出现-9995或者-9996时表示请求返送失败，交易未上链
+   3. **当出现-9999时表示网络出现断连，此时无法确定是交易还未发送成功还是获取Response时出现错误，不明确错误原因**
+   4. 其余情况均为平台返回交易上链失败错误，交易未上链
+
+2. 通过调用`txHashResponse.polling()`可以 通过交易Hash获取交易回执：
+   1. 返回状态码为0时表示查找回执成功，交易执行成功
+   2. **由于轮询查找回执时可能平台尚未完成交易执行(-32001)、平台达到流量限制(-32006)或网络抖动(-9996,-9999)等原因，轮询过程将持续到轮询次数结束，此时若任未获取到回执，将抛出-9998的错误，此时表示轮询查询回执不成功，可能平台尚未执行完该笔交易，不明确错误原因**
+   3. 其余情况下轮询获取到回执均表示查找回执成功，但交易执行失败，成为非法交易

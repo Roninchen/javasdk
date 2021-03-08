@@ -15,3 +15,42 @@ release v0.0.5
 release v0.0.6
     1. change class TxCount access from private to public
     2. refactor(doc): update document
+release v0.0.7
+    1. add method error message into evm transaction builder
+    2. fix invoke directly params process function
+release v0.0.8
+    1. add getBalance interface
+release v0.0.9
+    1. add serialize and deSerialize Transaction
+    2. add read pme file to address
+    3. add node service interface
+    4. fix sendBatchTxs interface
+    5. refactor use of gson creating
+    6. add get tx hash local
+    7. add decode hvm payload function
+release v0.1.0
+    1. add transfer vmType
+    2. fix hvm tx calculate txHash error
+    3. add bvm vmType
+
+release v1.0.0
+    1. support flato signature
+release v1.0.1
+    1. add transfer vmtype
+    2. add extraID
+release v1.0.2
+    1. fix fromAccountJson throw wrong message when use wrong password
+    2. fix getBatchReceipt
+    3. add fileMgr interface
+    4. confirm the TxVersion of platform
+    5. fix decoding invoke directly hvm payload
+    6. add mq register param and mq manual
+    7. add interface getTxsByExtraID(), getTxsByFilter()
+    8. fix user can not get responses when one of the transactions is wrong
+release v1.0.3
+    1. support bvm proposal
+    2. add contract destroy method
+    3. change null point to null string and null list for bvm
+    4. change filter rule json key split by _
+    5. set default txVersion to 1.0
+    6. add encodeEventTopic() function
