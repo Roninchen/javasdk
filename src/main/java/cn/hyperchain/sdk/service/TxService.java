@@ -1,13 +1,19 @@
 package cn.hyperchain.sdk.service;
 
+import cn.hyperchain.sdk.exception.RequestException;
 import cn.hyperchain.sdk.request.Request;
+import cn.hyperchain.sdk.response.ReceiptListResponse;
 import cn.hyperchain.sdk.response.ReceiptResponse;
 import cn.hyperchain.sdk.response.TxHashResponse;
 import cn.hyperchain.sdk.response.TxHashesResponse;
 import cn.hyperchain.sdk.response.tx.TxAvgTimeResponse;
 import cn.hyperchain.sdk.response.tx.TxCountResponse;
 import cn.hyperchain.sdk.response.tx.TxCountWithTSResponse;
+import cn.hyperchain.sdk.response.tx.TxLimitResponse;
 import cn.hyperchain.sdk.response.tx.TxResponse;
+import cn.hyperchain.sdk.response.tx.TxVersionResponse;
+import cn.hyperchain.sdk.service.params.FilterParam;
+import cn.hyperchain.sdk.service.params.MetaDataParam;
 import cn.hyperchain.sdk.transaction.Transaction;
 
 import java.math.BigInteger;
@@ -24,6 +30,7 @@ public interface TxService {
     /**
      * @see TxService#getTx(String, String, int...)
      */
+    @Deprecated
     Request<TxResponse> getTx(BigInteger from, BigInteger to, int... nodeIds);
 
     /**
@@ -34,7 +41,25 @@ public interface TxService {
      * @param nodeIds specific ids
      * @return {@link Request} of {@link TxResponse}
      */
+    @Deprecated
     Request<TxResponse> getTx(String from, String to, int... nodeIds);
+
+
+    /**
+     * @see TxService#getTxsWithLimit(String, String, MetaDataParam, int...)
+     */
+    Request<TxLimitResponse> getTxsWithLimit(String from, String to, int... nodeIds);
+
+    /**
+     * get transactions by a given block number range with limit.
+     *
+     * @param from     from block number
+     * @param to       to block number
+     * @param metaData meta data
+     * @param nodeIds  specific ids
+     * @return {@link Request} of {@link TxLimitResponse}
+     */
+    Request<TxLimitResponse> getTxsWithLimit(String from, String to, MetaDataParam metaData, int... nodeIds);
 
     /**
      * get all discard transactions.
@@ -171,30 +196,58 @@ public interface TxService {
     Request<TxResponse> getSignHash(String from, String to, BigInteger nonce, String value, BigInteger timestamp, int... nodeIds);
 
     /**
-     * @see TxService#getTransactionsByTime(BigInteger, BigInteger, int, int...)
-     */
-    Request<TxResponse> getTransactionsByTime(BigInteger startTime, BigInteger endTime, int... nodeIds);
-
-    /**
      * querying transactions within a specified time interval.
      *
      * @param startTime start time
      * @param endTime   end time
-     * @param limit     the maximum of the block count
      * @param nodeIds   specific ids
      * @return {@link Request} of {@link TxResponse}
      */
-    Request<TxResponse> getTransactionsByTime(BigInteger startTime, BigInteger endTime, int limit, int... nodeIds);
+    @Deprecated
+    Request<TxResponse> getTransactionsByTime(BigInteger startTime, BigInteger endTime, int... nodeIds);
 
     /**
-     * @see TxService#getTransactionsByTime(String, String, int, int...)
+     * @see TxService#getTransactionsByTime(String, String, int...)
      */
+    @Deprecated
     Request<TxResponse> getTransactionsByTime(String startTime, String endTime, int... nodeIds);
 
     /**
-     * @see TxService#getTransactionsByTime(BigInteger, BigInteger, int, int...)
+     * @see TxService#getTransactionsByTimeWithLimit(BigInteger, BigInteger, MetaDataParam, FilterParam, int...)
      */
-    Request<TxResponse> getTransactionsByTime(String startTime, String endTime, int limit, int... nodeIds);
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(String startTime, String endTime, int... nodeIds);
+
+    /**
+     * @see TxService#getTransactionsByTimeWithLimit(BigInteger, BigInteger, MetaDataParam, FilterParam, int...)
+     */
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(BigInteger startTime, BigInteger endTime, int... nodeIds);
+
+    /**
+     * @see TxService#getTransactionsByTimeWithLimit(BigInteger, BigInteger, MetaDataParam, FilterParam, int...)
+     */
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(String startTime, String endTime, MetaDataParam metaData, int... nodeIds);
+
+    /**
+     * @see TxService#getTransactionsByTimeWithLimit(BigInteger, BigInteger, MetaDataParam, FilterParam, int...)
+     */
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(String startTime, String endTime, MetaDataParam metaData, FilterParam filter, int... nodeIds);
+
+    /**
+     * @see TxService#getTransactionsByTimeWithLimit(BigInteger, BigInteger, MetaDataParam, FilterParam, int...)
+     */
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(BigInteger startTime, BigInteger endTime, MetaDataParam metaData, int... nodeIds);
+
+    /**
+     * querying transactions within a specified time interval with limit.
+     *
+     * @param startTime start time
+     * @param endTime   end time
+     * @param metaData  meta data
+     * @param filter    filter items
+     * @param nodeIds   specific ids
+     * @return {@link Request} of {@link TxLimitResponse}
+     */
+    Request<TxLimitResponse> getTransactionsByTimeWithLimit(BigInteger startTime, BigInteger endTime, MetaDataParam metaData, FilterParam filter, int... nodeIds);
 
     /**
      * get discard transactions by time.
@@ -279,7 +332,7 @@ public interface TxService {
      */
     Request<TxResponse> getBatchTxByHash(ArrayList<String> txHashList, int... nodeIds);
 
-    Request<ReceiptResponse> getBatchReceipt(ArrayList<String> txHashList, int... nodeIds);
+    Request<ReceiptListResponse> getBatchReceipt(ArrayList<String> txHashList, int... nodeIds);
 
     /**
      * query the count of transactions with a given period.
@@ -290,6 +343,30 @@ public interface TxService {
      * @return {@link Request} of {@link TxCountResponse}
      */
     Request<TxCountResponse> getTxsCountByTime(BigInteger startTime, BigInteger endTime, int... nodeIds);
+
+    /**
+     * get transactions by extraID.
+     *
+     * @param mode     query type for extraID
+     * @param detail   detail transactions info
+     * @param metaData meta data
+     * @param filter   filter
+     * @param nodeIds  specific ids
+     * @return {@link Request} of {@link TxLimitResponse}
+     */
+    Request<TxLimitResponse> getTxsByExtraID(int mode, boolean detail, MetaDataParam metaData, FilterParam filter, int... nodeIds);
+
+    /**
+     * get transactions by filter.
+     *
+     * @param mode     query type for filter
+     * @param detail   detail transactions info
+     * @param metaData meta data
+     * @param filter   filter
+     * @param nodeIds  specific ids
+     * @return {@link Request} of {@link TxLimitResponse}
+     */
+    Request<TxLimitResponse> getTxsByFilter(int mode, boolean detail, MetaDataParam metaData, FilterParam filter, int... nodeIds);
 
     /**
      * send tx.
@@ -310,4 +387,10 @@ public interface TxService {
      */
     Request<TxHashesResponse> sendBatchTxs(ArrayList<Transaction> transactions, ArrayList<String> methods, int... nodeIds);
 
+    /**
+     * get TxVersion.
+     *
+     * @return String
+     */
+    Request<TxVersionResponse> getTxVersion(int nodeId) throws RequestException;
 }

@@ -44,6 +44,34 @@ public class ReceiptResponse extends Response {
                     + ", version='" + version + '\''
                     + '}';
         }
+
+        public String getContractAddress() {
+            return contractAddress;
+        }
+
+        public String getRet() {
+            return ret;
+        }
+
+        public EventLog[] getLog() {
+            return log;
+        }
+
+        public String getVmType() {
+            return vmType;
+        }
+
+        public long getGasUsed() {
+            return gasUsed;
+        }
+
+        public String getVersion() {
+            return version;
+        }
+
+        public String getTxHash() {
+            return txHash;
+        }
     }
 
     @Expose
@@ -58,31 +86,31 @@ public class ReceiptResponse extends Response {
     }
 
     public String getContractAddress() {
-        return result.contractAddress;
+        return result.getContractAddress();
     }
 
     public String getRet() {
-        return result.ret;
+        return result.getRet();
     }
 
     public String getTxHash() {
-        return result.txHash;
+        return result.getTxHash();
     }
 
     public EventLog[] getLog() {
-        return result.log;
+        return result.getLog();
     }
 
     public String getVmType() {
-        return result.vmType;
+        return result.getVmType();
     }
 
     public long getGasUsed() {
-        return result.gasUsed;
+        return result.getGasUsed();
     }
 
     public String getVersion() {
-        return result.version;
+        return result.getVersion();
     }
 
     @Override

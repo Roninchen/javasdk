@@ -9,6 +9,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.Expose;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -34,6 +35,8 @@ public abstract class Request<K extends Response> {
     }
 
     private Gson gson;
+    protected HashMap<String, String> headers;
+    private static final Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     // rpc request
     @Expose
     private int id = 1;
@@ -47,16 +50,17 @@ public abstract class Request<K extends Response> {
     private List<Object> params;
 
     Request(String method, ProviderManager providerManager, Class<K> clazz, int... nodeIds) {
-        this.gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
         this.clazz = clazz;
         this.providerManager = providerManager;
         this.nodeIds = nodeIds;
         this.params = new ArrayList<>();
         this.method = method;
+        this.headers = new HashMap<>();
     }
 
     /**
      * default send by provider manager.
+     *
      * @return {@link Response}
      * @throws RequestException -
      */
@@ -73,6 +77,7 @@ public abstract class Request<K extends Response> {
 
     /**
      * default async send.
+     *
      * @return future of {@link Response}
      */
     public final Future<K> sendAsync() {
@@ -126,5 +131,17 @@ public abstract class Request<K extends Response> {
 
     public final void setId(int id) {
         this.id = id;
+    }
+
+    public final HashMap<String, String> getHeaders() {
+        return headers;
+    }
+
+    public final void setHeaders(HashMap<String, String> headers) {
+        this.headers = headers;
+    }
+
+    public final void addHeader(String key, String value) {
+        this.headers.put(key, value);
     }
 }

@@ -1,7 +1,15 @@
 package cn.hyperchain.sdk.common.utils;
 
 import cn.hyperchain.contract.BaseInvoke;
+import cn.hyperchain.sdk.crypto.HashUtil;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
+import cn.hyperchain.sdk.bvm.operate.ContractMethod;
+import cn.hyperchain.sdk.bvm.operate.Operation;
+import cn.hyperchain.sdk.bvm.operate.ProposalContentOperation;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.util.ClassLoaderRepository;
 import org.apache.log4j.Logger;
@@ -10,6 +18,8 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.util.HashMap;
 
 public class Encoder {
 
@@ -34,8 +44,8 @@ public class Encoder {
                 baos.write(buf, 0, len);
             }
             byte[] buffer = baos.toByteArray();
-            if (buffer.length > 1024 * 64) {
-                throw new IOException("the contract jar should not be larger than 64KB");
+            if (buffer.length > 1024 * 512) {
+                throw new IOException("the contract jar should not be larger than 512KB");
             }
 
             return ByteUtil.toHex(buffer);
@@ -96,5 +106,141 @@ public class Encoder {
         } catch (ClassNotFoundException | IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * get bvm invoke payload.
+     *
+     * @param methodName method name
+     * @param params     invoke params
+     * @return payload
+     */
+    public static String encodeBVM(String methodName, String... params) {
+        int allLen = 0;
+        allLen += 8;
+        allLen += methodName.length();
+        for (String param : params) {
+            allLen += param.length();
+            allLen += 4;
+        }
+        byte[] payload = new byte[allLen];
+
+        int start = 0;
+        System.arraycopy(ByteUtil.intToBytes(methodName.length()), 0, payload, start, 4);
+        start += 4;
+        System.arraycopy(methodName.getBytes(), 0, payload, start, methodName.getBytes().length);
+        start += methodName.getBytes().length;
+        System.arraycopy(ByteUtil.intToBytes(params.length), 0, payload, start, 4);
+        start += 4;
+
+        for (String param : params) {
+            System.arraycopy(ByteUtil.intToBytes(param.getBytes().length), 0, payload, start, 4);
+            start += 4;
+            System.arraycopy(param.getBytes(), 0, payload, start, param.getBytes().length);
+            start += param.getBytes().length;
+        }
+
+        return ByteUtil.toHex(payload);
+    }
+
+    /**
+     * encode contract event to sha3 to get event topics.
+     *
+     * @param abi abi
+     * @return event hash
+     */
+    public static HashMap<String, String> encodeEVMEvent(String abi) {
+        HashMap<String, String> eventMap = new HashMap<String, String>();
+        JsonArray abiArray = new JsonParser().parse(abi).getAsJsonArray();
+
+        // get events abi prepare to decode the event
+        for (int i = 0; i < abiArray.size(); i++) {
+            //solve the event data in abi
+            JsonObject methodBody = abiArray.get(i).getAsJsonObject();
+            if (methodBody.has("name") && methodBody.get("type").getAsString().equals("event") && !methodBody.get("anonymous").getAsBoolean()) {
+                String eventName = methodBody.get("name").getAsString();
+                JsonArray list = methodBody.get("inputs").getAsJsonArray();
+                StringBuilder sb = new StringBuilder("(");
+                for (JsonElement object : list) {
+                    JsonObject eventBody = object.getAsJsonObject();
+                    sb.append(eventBody.get("type").getAsString()).append(",");
+                }
+                sb.setCharAt(sb.length() - 1, ')');
+                String event = eventName + sb.toString();
+                String eventId = "0x" + ByteUtil.toHex(HashUtil.sha3(event.getBytes()));
+                eventMap.put(eventName, eventId);
+
+
+            }
+        }
+        return eventMap;
+    }
+
+    /**
+     * encode topic to hash hex.
+     * @param topic topic
+     * @return hash hex
+     */
+    public static String encodeEventTopic(String topic) {
+        byte[] data = new byte[32];
+        byte[] topicData = topic.getBytes(Utils.DEFAULT_CHARSET);
+        System.arraycopy(topicData, 0, data, 32 - topicData.length, topicData.length);
+        return ByteUtil.toHex(data);
+    }
+
+    /**
+     * encode ProposalContentOperations.
+     * @param ops proposal content operations
+     * @return encode byte in payload
+     */
+    public static byte[] encodeProposalContents(ProposalContentOperation[] ops) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        // encode : |operation length(4)|operation|...
+        // operation construct with : |method length(4b)|method|params count(4)|params1 length(4)|params1|...
+        try {
+            if (ops == null) {
+
+                bos.write(ByteUtil.intToBytes(0));
+
+            } else {
+                bos.write(ByteUtil.intToBytes(ops.length));
+            }
+            for (ProposalContentOperation pco : ops) {
+                bos.write(encodeOperation(pco));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return bos.toByteArray();
+    }
+
+
+    /**
+     * encode Operation to payload.
+     * @param opt operation
+     * @return payload
+     */
+    public static byte[] encodeOperation(Operation opt) {
+        Gson gson = new Gson();
+        // encode : |method length(4b)|method|params count(4)|params1 length(4)|params1|...
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] b = opt.getMethod().getMethodName().getBytes();
+        try {
+            bos.write(ByteUtil.intToBytes(b.length));
+
+            bos.write(b);
+            bos.write(ByteUtil.intToBytes(opt.getArgs().length));
+            for (int i = 0; i < opt.getArgs().length; i++) {
+                byte[] bytes = opt.getMethod() == ContractMethod.ProposalCreate && i == 0 ? Base64.getDecoder().decode(opt.getArgs()[i]) : opt.getArgs()[i].getBytes();
+                byte[] intToBytes = ByteUtil.intToBytes(bytes.length);
+                bos.write(intToBytes);
+                bos.write(bytes);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        byte[] bytes = bos.toByteArray();
+        return bos.toByteArray();
     }
 }

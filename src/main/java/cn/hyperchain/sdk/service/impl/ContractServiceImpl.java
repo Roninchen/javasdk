@@ -62,7 +62,7 @@ public class ContractServiceImpl implements ContractService {
 
         txHashResponseContractRequest.addParams(txParamMap);
         txHashResponseContractRequest.setJsonrpc(jsonrpc);
-        txHashResponseContractRequest.setJsonrpc(namespace);
+        txHashResponseContractRequest.setNamespace(namespace);
 
         return txHashResponseContractRequest;
     }
@@ -88,9 +88,19 @@ public class ContractServiceImpl implements ContractService {
     @Override
     public Request<TxHashResponse> maintain(Transaction transaction, int... nodeIds) {
         ContractRequest txHashResponseContractRequest = new ContractRequest(CONTRACT_PREFIX + "maintainContract", providerManager, TxHashResponse.class, transaction, nodeIds);
-
         Map<String, Object> params = transaction.commonParamMap();
-        params.put("opcode", transaction.getOpCode());
+
+        txHashResponseContractRequest.addParams(params);
+        txHashResponseContractRequest.setJsonrpc(jsonrpc);
+        txHashResponseContractRequest.setNamespace(namespace);
+
+        return txHashResponseContractRequest;
+    }
+
+    @Override
+    public Request<TxHashResponse> manageContractByVote(Transaction transaction, int... nodeIds) {
+        ContractRequest txHashResponseContractRequest = new ContractRequest(CONTRACT_PREFIX + "manageContractByVote", providerManager, TxHashResponse.class, transaction, nodeIds);
+        Map<String, Object> params = transaction.commonParamMap();
 
         txHashResponseContractRequest.addParams(params);
         txHashResponseContractRequest.setJsonrpc(jsonrpc);
